@@ -19,12 +19,22 @@
    var DELTA_TIME = 0;
    var LAST_TIME = Date.now();
 
+   /*
+   * Canvas stuff
+   */
+
+   var W = innerWidth;
+   var H = innerHeight;
+   var frameIndex = 0;
+
 
 
 
    function SoundReact () {
      this.cv;
      this.ctx;
+     this.ocv;
+     this.octx;
      this.cvS;
      this.linesArray = [];
 
@@ -68,8 +78,9 @@
 
        this.audioCtx = new AudioContext();
        this.analyser = this.audioCtx.createAnalyser();
+       this.analyser.fftSize = 256;
        this.frequencyData = new Uint8Array(this.analyser.frequencyBinCount);
-       this.frequences = new Float32Array(2048);
+       this.frequences = new Float32Array(256);
 
        this.audioCtx.decodeAudioData(response, function(buffer) {
 
@@ -97,107 +108,79 @@
      },
      render: function () {
 
-       this.frame();
+       this.frame(0);
        window.addEventListener( 'resize', this.onResize.bind(this) );
        rafId = requestAnimationFrame( this.frame.bind(this) );
      },
-     frame: function () {
+     frame: function ( ms ) {
        var self = this;
        rafId = requestAnimationFrame( this.frame.bind(this) )
-
        DELTA_TIME = Date.now() - LAST_TIME;
        LAST_TIME = Date.now();
 
+       frameIndex++;
 
        this.analyser.getByteFrequencyData(this.frequencyData);
+       this.drawFrequency(this.ctx, true, ms)
 
-     
-
-
-       var freq = Array.prototype.slice.call(this.frequencyData, 0, this.frequencyData.length);
-       this.frequencyDataFull = freq.concat(freq.slice().reverse());
-
-       //console.log(this.frequencyDataFull);
-
-
-       /*
-       var freq = Array.prototype.slice.call(this.frequencyData);
-       var reversedFreq = freq.reverse();
-       this.frequencyDataFull = reversedFreq.concat(freq);
-       */
-
-       this.drawFrequency(this.ctx, true)
-       //this.drawFrequency(this.octx, false)
-
-       //this.ctx.drawImage( this.ocv, 0, 10 );
-
-       // Moyenne de tout
-       // Déclencher un kick
-       // average = cumul / 255;
      },
 
 
-     drawFrequency: function(ctx, shouldClear) {
-
-       ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-       if (shouldClear) ctx.clearRect( 0, 0, this.cvS[0], this.cvS[1] );
+     drawFrequency: function(ctx, shouldClear, ms) {
 
        // ctx.translate(0, TRANSLATESTEP);
 
-       var nbLines = this.cvS[0] / LINELENGTH;
+       var nbLines = W / LINELENGTH;
 
        var cumul = 0;
        var average = 0;
        var lines = [];
+       var equalizerW = W / 2;
+       var equalizerH = H / 4;
+       var len = this.frequencyData.length;
+    
+         this.ctx.fillStyle = '#00112204';
+         this.ctx.fillRect(0, 0, W, H);
 
-      
+         this.ctx.save();
+         this.ctx.translate(W/2, H/2);
+         this.ctx.lineWidth = 4;
 
-       ctx.strokeStyle = 'rgba(245, 245, 245, 0.9)';
-       ctx.lineWidth = 2;
-       ctx.moveTo(0, 0);
-       //ctx.translate(0, TRANSLATESTEP);
-     
-       for ( var i = 0; i < nbLines; i += 2 ) {
+         var zoomLevel = 1.02;
+         this.ctx.drawImage(
+          this.cv,
+          0, 0, W, H,
+          -W/2*zoomLevel, -H/2 * zoomLevel, W * zoomLevel, H * zoomLevel
+         );
 
+         this.ctx.globalCompositeOperation = 'lighter';
+
+         this.ctx.strokeStyle = 'hsl(' + ms / 300 + ', 50%, 50%)';
+         
+      if((frameIndex % 2) === 0) {
+        this.ctx.beginPath();
+        this.ctx.lineTo(- W/2,  - 40 );
+       for ( var i = 0; i < len; i += 2 ) {
+          var index = i < len / 2 ? i : len - 1 - i; // on parcours le tableau dans l'autre sens quand on atteint la moitié de len
          // get the frequency according to current i
          var percentIdx = i / nbLines;
          var frequencyIdx = Math.floor(2048 * percentIdx);
 
-         this.frequences[frequencyIdx] += (this.frequencyDataFull[frequencyIdx] - this.frequences[frequencyIdx]) * EASING;
+          this.frequences[index] += (this.frequencyData[index] - this.frequences[index]) * EASING;
+
+          var v = 1 - this.frequences[index] / 256;
          
-         //i == 0 ? console.log(this.frequencyData.reverse()) : '';
-         lines.push([i * LINELENGTH, (this.cvS[1]/2 - this.frequences[frequencyIdx]) * 1.2]);
+         this.ctx.lineTo(( i / len - .5 ) * equalizerW, v * equalizerH * 0.8);
 
-         //[x,y]
-
-         //cumul += this.frequencyData[frequencyIdx];
 
        }
+        this.ctx.lineTo(W / 2,  - 40 );
+        this.ctx.stroke();
+      }
 
-       //console.log(lines)
+      this.ctx.globalCompositeOperation = 'source-over';
 
-
-       addLimited(this.linesArray, lines, 60);
-
-
-
-       for (var i = 0; i < this.linesArray.length; i++) {
-         // remet la matrice de transformation courante à la matrice identité
-         ctx.scale(1,1 + i * 0.01);
-         
-         ctx.beginPath();
-         for (var j = 0; j < this.linesArray[i].length; j++) {
-           
-           ctx.lineTo(this.linesArray[i][j][0], this.linesArray[i][j][1]);
-
-           //console.log(this.linesArray[i][j]);
-         }
-         //ctx.closePath();
-         ctx.setTransform(1, 0, 0, 1, 0, 0);
-         ctx.stroke();
-       }
-
-       //ctx.stroke();
+       this.ctx.restore();
 
      },
 
@@ -206,14 +189,14 @@
 
        this.cvS = [window.innerWidth, window.innerHeight]
 
-       this.cv.width = this.cvS[0];
-       this.cv.height = this.cvS[1];
-       this.cv.style.width = this.cvS[0]; + 'px'
-       this.cv.style.height = this.cvS[1]; + 'px';
-       this.ocv.width = this.cvS[0];
-       this.ocv.height = this.cvS[1];
-       this.ocv.style.width = this.cvS[0]; + 'px'
-       this.ocv.style.height = this.cvS[1]; + 'px'
+       this.cv.width = W;
+       this.cv.height = H;
+       this.cv.style.width = W + 'px'
+       this.cv.style.height = H + 'px';
+       this.ocv.width = W;
+       this.ocv.height = H;
+       this.ocv.style.width = W; + 'px'
+       this.ocv.style.height = H; + 'px'
 
      },
      render: function () {
