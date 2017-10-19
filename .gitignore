@@ -1,0 +1,13 @@
+.DS_Store
+*.log
+node_modules
+build
+*.node
+*.orig
+.idea
+test
+gulp.1
+yarn.lock
+.sass-cache/
+empty-rmv/
+*_autosave*
