@@ -47,6 +47,8 @@ function Scene() {
   this.ocv;
   this.octx;
   this.cvS;
+  this.audioManager;
+  this.audioData;
   this.freqLine;
   this.canyon;
   this.sun;
@@ -85,7 +87,7 @@ Scene.prototype = {
       y: 0,
       octx: this.octx,
       ocv: this.ocv,
-      zoom: 1.02,
+      zoom: 1.04,
       canyonLine: this.freqLine
     });
 
@@ -97,6 +99,15 @@ Scene.prototype = {
       nbPoints:60
     });
     this.sun.setPoints();
+
+    // init sound
+    // this.audioManager = new AudioManager({
+    //   onAudioRender: this.render().bind(this)
+    // });
+
+    //console.log(this.audioManager);
+
+    //this.audioManager.loadSound(audioFile);
 
     this.loadSound();
   },
@@ -148,8 +159,6 @@ Scene.prototype = {
     });
   },
   render: function() {
-
-    //this.frame(0);
     window.addEventListener('resize', this.onResize.bind(this));
     rafId = requestAnimationFrame(this.frame.bind(this));
   },
@@ -160,7 +169,9 @@ Scene.prototype = {
     LAST_TIME = Date.now();
 
     frameIndex++;
+    //console.log(.audioManager)
 
+    //this.audioData = this.audioManager.analyse();
     this.analyser.getByteFrequencyData(this.frequencyData);
 
     // Draw 
@@ -174,9 +185,6 @@ Scene.prototype = {
 
   },
   onResize: function(evt) {
-
-    this.cvS = [window.innerWidth, window.innerHeight]
-
     this.cv.width = W;
     this.cv.height = H;
     this.cv.style.width = W + 'px'
@@ -186,12 +194,6 @@ Scene.prototype = {
     this.ocv.style.width = W; + 'px'
     this.ocv.style.height = H; + 'px'
 
-  },
-  render: function() {
-
-    this.frame();
-    window.addEventListener('resize', this.onResize.bind(this));
-    rafId = requestAnimationFrame(this.frame.bind(this));
   }
 }
 
@@ -277,7 +279,7 @@ Canyon.prototype = {
 
     this.octx.strokeStyle = 'hsl(' + ms / 300 + ', ' + lightEasingValue + '%, ' + lightEasingValue + '%)';
 
-    if ((frameIndex % 2) === 0) {
+    if ((frameIndex % 1) === 0) {
       this.canyonLine.draw(this.octx, audioData);
     }
 
@@ -342,6 +344,74 @@ Sun.prototype = {
   }
 } 
 
+/**
+ *
+ * Audio
+ *
+ */
+ function AudioManager(props) {
+  this.audioCtx;
+  this.audioBuffer;
+  this.audioSource;
+  this.analyser;
+  this.frequencyData;
+  this.frequences;
+  this.onAudioRender;
+ }
+
+ AudioManager.prototype = {
+   load: function(url) {
+     var self = this;
+     var request = new XMLHttpRequest();
+     request.open('GET', audioFile, true);
+     request.responseType = 'arraybuffer';
+
+     // Decode asynchronously
+     request.onload = function() {
+
+          console.log('load sound');
+       self.processAudio(request.response);
+
+     }
+     request.send();
+   },
+   process: function(response) {
+     var self = this;
+
+     this.audioCtx = new AudioContext();
+     this.analyser = this.audioCtx.createAnalyser();
+     this.analyser.fftSize = 256;
+     this.frequencyData = new Uint8Array(this.analyser.frequencyBinCount);
+     this.frequences = new Float32Array(256);
+
+     this.audioCtx.decodeAudioData(response, function(buffer) {
+
+       // success callback
+       self.audioBuffer = buffer;
+
+       // Create sound from buffer
+       self.audioSource = self.audioCtx.createBufferSource();
+       self.audioSource.buffer = self.audioBuffer;
+
+       // connect the audio source to context's output
+       self.audioSource.connect(self.analyser)
+       self.analyser.connect(self.audioCtx.destination)
+
+       // play sound
+       self.audioSource.start();
+
+       self.onAudioRender()
+
+     }, function() {
+
+       // error callback
+
+     });
+   },
+   analyse: function() {
+    return this.analyser.getByteFrequencyData(this.frequencyData);
+   }
+ };
 
 /**
  *
