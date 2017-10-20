@@ -10,15 +10,15 @@ var frequences = new Float32Array(256); // TODO: a mettre dans audio manager
  * Constantes
  *
  */
-var EASING = 0.1
-var LINELENGTH = 20;
-var TRANSLATESTEP = 1;
+var EASING = 0.3;
+var AVERAGEDROP = 70;
+var DELTA_TIME = 0;
+var LAST_TIME = Date.now();
 
 /*
  * Time stuff
  */
-var DELTA_TIME = 0;
-var LAST_TIME = Date.now();
+
 
 /*
  * Canvas stuff
@@ -32,14 +32,17 @@ var lineBeginOffset = -40;
 /*
  * Test
  */
- var EASING = 0.3;
+ var easeAverage = 0;
  var noise = 0;
  // Sun
+var sunGradient;
 var sunEasingValue;
+var scaleSun = 0;
+var scaleSunCurrent = 0;
 // Light
 var lightEasingValue;
 var iterationCount = 0;
-var totalIterations = 2 * 60; // 25seconds 
+var totalIterations = 25 * 60; // 25seconds 
 
 function Scene() {
   this.cv;
@@ -52,20 +55,11 @@ function Scene() {
   this.freqLine;
   this.canyon;
   this.sun;
-
-  /*
-   * Sound
-   */
-  this.audioCtx;
-  this.audioBuffer;
-  this.audioSource;
-  this.analyser;
-  this.frequencyData;
-  this.frequences;
 }
 
 Scene.prototype = {
   init: function() {
+    var self = this;
     this.cv = document.querySelector('canvas');
     this.ctx = this.cv.getContext('2d');
     this.ocv = document.createElement('canvas');
@@ -94,69 +88,18 @@ Scene.prototype = {
     // init sun
     this.sun = new Sun({
       x: W/2,
-      y: H - H/3 - 20,
+      y: H - H/3 - 60,
       r: W/10,
       nbPoints:60
     });
     this.sun.setPoints();
 
     // init sound
-    // this.audioManager = new AudioManager({
-    //   onAudioRender: this.render().bind(this)
-    // });
-
-    //console.log(this.audioManager);
-
-    //this.audioManager.loadSound(audioFile);
-
-    this.loadSound();
-  },
-  loadSound: function(url) {
-    var self = this;
-    var request = new XMLHttpRequest();
-    request.open('GET', audioFile, true);
-    request.responseType = 'arraybuffer';
-
-    // Decode asynchronously
-    request.onload = function() {
-
-      self.processAudio(request.response);
-
-    }
-    request.send();
-  },
-  processAudio: function(response) {
-    var self = this;
-
-    this.audioCtx = new AudioContext();
-    this.analyser = this.audioCtx.createAnalyser();
-    this.analyser.fftSize = 256;
-    this.frequencyData = new Uint8Array(this.analyser.frequencyBinCount);
-    this.frequences = new Float32Array(256);
-
-    this.audioCtx.decodeAudioData(response, function(buffer) {
-
-      // success callback
-      self.audioBuffer = buffer;
-
-      // Create sound from buffer
-      self.audioSource = self.audioCtx.createBufferSource();
-      self.audioSource.buffer = self.audioBuffer;
-
-      // connect the audio source to context's output
-      self.audioSource.connect(self.analyser)
-      self.analyser.connect(self.audioCtx.destination)
-
-      // play sound
-      self.audioSource.start();
-
-      self.render()
-
-    }, function() {
-
-      // error callback
-
+    this.audioManager = new AudioManager({
+      onAudioRender: this.render.bind(this)
     });
+
+    this.audioManager.load();
   },
   render: function() {
     window.addEventListener('resize', this.onResize.bind(this));
@@ -168,18 +111,23 @@ Scene.prototype = {
     DELTA_TIME = Date.now() - LAST_TIME;
     LAST_TIME = Date.now();
 
-    frameIndex++;
-    //console.log(.audioManager)
 
-    //this.audioData = this.audioManager.analyse();
-    this.analyser.getByteFrequencyData(this.frequencyData);
+
+    frameIndex++;
+
+    //this.audioData ;
+    this.audioManager.cumul = 0;
+    //this.audioManager.average = 0;
+    this.audioData = this.audioManager.analyse();
+
+    var freqAverage = this.audioManager.average(this.audioData);
 
     // Draw 
     this.ctx.clearRect(0,0,W,H);
     if(frameIndex > 10) {
-      this.sun.draw(this.ctx);
+      this.sun.draw(this.ctx, freqAverage);
     }
-    this.canyon.draw(this.ctx, this.frequencyData, ms);
+    this.canyon.draw(this.ctx, this.audioData, freqAverage, ms);
     this.ctx.restore();
     
 
@@ -238,7 +186,7 @@ function Canyon(props) {
 }
 
 Canyon.prototype = {
-  draw: function(ctx, audioData, ms) {
+  draw: function(ctx, audioData, audioAverage, ms) {
 
     // Clip canyon
     ctx.save();
@@ -253,7 +201,7 @@ Canyon.prototype = {
     ctx.translate(-W/2, -H/2);
 
     // reset canvas
-    this.octx.fillStyle = 'rgba(28,28,28,0.03)';
+    this.octx.fillStyle = 'rgba(14,14,14,0.03)';
     this.octx.fillRect(0, 0, W, H);
 
     // begin draw lines
@@ -265,8 +213,6 @@ Canyon.prototype = {
       this.ocv,
       0, 0, W, H, -W / 2 * this.zoom, -H / 2 * this.zoom, W * this.zoom, H * this.zoom
     );
-    // >>>> draw image opti :
-    //this.octx.drawImage(this.cv, -W/2, lineBeginOffset, W, equalizerH, this.zoom, this.zoom, W * this.zoom, equalizerH * this.zoom);
 
     this.octx.globalCompositeOperation = 'lighter';
 
@@ -274,10 +220,12 @@ Canyon.prototype = {
     // Animate light 
     if (iterationCount < totalIterations) {
       lightEasingValue = Math.easeOutQuad(iterationCount, 10, 50 - 10, totalIterations);
-      //iterationCount++;  
     }
 
-    this.octx.strokeStyle = 'hsl(' + ms / 300 + ', ' + lightEasingValue + '%, ' + lightEasingValue + '%)';
+    this.octx.strokeStyle = 'hsl(335, ' + (56 + audioAverage * 0.5) + '%, ' + (54 + audioAverage * 0.2) + '%)'; // hsl(335, 56%, 54%)
+    console.log('hsl(270, ' + (56 + audioAverage * 0.5) + '%, ' + (54 + audioAverage * 0.1) + '%)');
+    //this.octx.strokeStyle = 'hsl(' + ms / 300 + ', ' + lightEasingValue + '%, ' + lightEasingValue + '%)';
+    //this.octx.strokeStyle = 'hsl(' + 180 + ', ' + lightEasingValue + '%, ' + lightEasingValue + '%)'; //hsl(180, 92%, 74%)
 
     if ((frameIndex % 1) === 0) {
       this.canyonLine.draw(this.octx, audioData);
@@ -313,34 +261,68 @@ Sun.prototype = {
       );
     }
   },
-  draw: function(ctx) {
+  draw: function(ctx, audioAverage) {
     ctx.save();
 
 
-    // On veut changer le this.y :
     if (iterationCount < totalIterations) {
-      sunEasingValue = Math.easeOutQuad(iterationCount, this.y + this.r*1.5, this.y - (this.y + this.r*1.5), totalIterations);
-      iterationCount++;  
-    } 
-    if((iterationCount % 30) === 0) {
-        console.log(iterationCount/30); 
+      if (frameIndex > 200) {
+        sunEasingValue = Math.easeOutQuad(iterationCount, this.y + this.r*2, this.y - (this.y + this.r*2), totalIterations);
+        iterationCount++;  
+      } else {
+        sunEasingValue = this.y + this.r*2;
+      }
     }
-    //}
+
     ctx.translate(this.x, sunEasingValue);
+
+    if (iterationCount > (totalIterations * 0.75) && audioAverage > 50) {
+      scaleSun = audioAverage/255;
+    } else {
+      scaleSun *= 0.9;
+    }
+    scaleSunCurrent += (scaleSun - scaleSunCurrent) * EASING;
+
+    ctx.scale(1 + scaleSunCurrent,1 + scaleSunCurrent);
+
     //ctx.clearRect(0,0,W,H);
-    ctx.fillStyle = 'rgba(245, 245, 245, 1)';
+    sunGradient = ctx.createLinearGradient(this.r, -this.r, this.r, this.r*2);
+    
+    // Add colors
+    sunGradient.addColorStop(0.000, 'rgba(252, 249, 150, 1.000)');
+    sunGradient.addColorStop(0.301, 'rgba(229, 125, 63, 1.000)');
+    sunGradient.addColorStop(1.000, 'rgba(203, 71, 125, 1.000)');
+    
+    // Fill with gradient
+    ctx.fillStyle = sunGradient;
+
+
+    //ctx.fillStyle = 'rgba(245, 245, 245, 1)';
+    ctx.shadowBlur=audioAverage * 0.8;
+    ctx.shadowColor="rgba(203, 71, 125, 1.000)";
     ctx.beginPath();
 
     for (var i = this.points.length - 1; i >= 0; i--) {
       ctx.lineTo(this.points[i][0], this.points[i][1]);
+    }
+    //ctx.clip();
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    //ctx.save();
+    ctx.translate(0, 0);
+    ctx.fillStyle = '#000';  
 
-      //noise = ((this.points[i][0] + Math.cos(Math.random())) * 5 - noise) * 0.3;
-      //console.log(noise)
-      //ctx.lineTo(this.points[i][0], this.points[i][1]);
+    ctx.beginPath();
+    ctx.shadowBlur=audioAverage * 0.05;
+    ctx.shadowColor="#00";
+    for (var i = 0; i < 15; i++) {
+      ctx.fillRect(0, (this.y - this.r) + 40 + i * 20, W, (i + 1) * 2);
     }
     ctx.closePath();
     ctx.fill();
     ctx.restore();
+
   }
 } 
 
@@ -356,7 +338,8 @@ Sun.prototype = {
   this.analyser;
   this.frequencyData;
   this.frequences;
-  this.onAudioRender;
+  this.onAudioRender = props.onAudioRender;
+  this.cumul;
  }
 
  AudioManager.prototype = {
@@ -369,8 +352,8 @@ Sun.prototype = {
      // Decode asynchronously
      request.onload = function() {
 
-          console.log('load sound');
-       self.processAudio(request.response);
+       console.log('load sound');
+       self.process(request.response);
 
      }
      request.send();
@@ -408,8 +391,18 @@ Sun.prototype = {
 
      });
    },
+   average: function(audioData) {
+    for (var i = 0; i < audioData.length; i++) {
+      this.cumul += audioData[i];
+      //frequences[index] += (audioData[index] - frequences[index]) * this.easeFactor;
+    }
+    easeAverage += ((this.cumul / (audioData.length - 1)) - easeAverage) * EASING;
+    return easeAverage;
+  },
    analyse: function() {
-    return this.analyser.getByteFrequencyData(this.frequencyData);
+    this.analyser.getByteFrequencyData(this.frequencyData);
+
+    return this.frequencyData
    }
  };
 
@@ -427,18 +420,6 @@ scene.init();
  * Tools
  *
  */
-
-// map a range of numbers to another range of numbers
-Number.prototype.map = function(in_min, in_max, out_min, out_max) {
-  return (this - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
-}
-
-function addLimited(arr, x, limit) {
-  arr.unshift(x);
-  if (arr.length > limit) {
-    arr.length = limit;
-  }
-}
 
 // t: current iteration
 // b: begin value

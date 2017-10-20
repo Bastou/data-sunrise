@@ -1,6 +1,6 @@
 // options
-var proxy = "http://localhost/Gobelins/data-sunrise/";
-//var proxy = "http://wp.dev/";
+//var proxy = "http://localhost/Gobelins/data-sunrise/";
+var proxy = "http://localhost:8888/creativecoding/data-sunrise/";
 
 
 // modules
