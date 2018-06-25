@@ -39,6 +39,7 @@ var sunGradient;
 var sunEasingValue;
 var scaleSun = 0;
 var scaleSunCurrent = 0;
+var sunBars = 10;
 // Light
 var lightEasingValue;
 var iterationCount = 0;
@@ -88,7 +89,7 @@ Scene.prototype = {
     // init sun
     this.sun = new Sun({
       x: W/2,
-      y: H - H/3 - 60,
+      y: H - H/3,
       r: W/10,
       nbPoints:60
     });
@@ -102,6 +103,7 @@ Scene.prototype = {
     this.audioManager.load();
   },
   render: function() {
+        console.log(this)
     window.addEventListener('resize', this.onResize.bind(this));
     rafId = requestAnimationFrame(this.frame.bind(this));
   },
@@ -133,6 +135,8 @@ Scene.prototype = {
 
   },
   onResize: function(evt) {
+    W = innerWidth;
+    H = innerHeight;
     this.cv.width = W;
     this.cv.height = H;
     this.cv.style.width = W + 'px'
@@ -222,8 +226,9 @@ Canyon.prototype = {
       lightEasingValue = Math.easeOutQuad(iterationCount, 10, 50 - 10, totalIterations);
     }
 
-    this.octx.strokeStyle = 'hsl(335, ' + (56 + audioAverage * 0.5) + '%, ' + (54 + audioAverage * 0.2) + '%)'; // hsl(335, 56%, 54%)
-    console.log('hsl(270, ' + (56 + audioAverage * 0.5) + '%, ' + (54 + audioAverage * 0.1) + '%)');
+    this.octx.strokeStyle = 'hsl(335, ' + lightEasingValue + '%, ' + lightEasingValue + '%)';
+    //this.octx.strokeStyle = 'hsl(335, ' + (56 + audioAverage * 0.5) + '%, ' + (54 + audioAverage * 0.2) + '%)'; // hsl(335, 56%, 54%)
+    //console.log('hsl(270, ' + (56 + audioAverage * 0.5) + '%, ' + (54 + audioAverage * 0.1) + '%)');
     //this.octx.strokeStyle = 'hsl(' + ms / 300 + ', ' + lightEasingValue + '%, ' + lightEasingValue + '%)';
     //this.octx.strokeStyle = 'hsl(' + 180 + ', ' + lightEasingValue + '%, ' + lightEasingValue + '%)'; //hsl(180, 92%, 74%)
 
@@ -276,7 +281,7 @@ Sun.prototype = {
 
     ctx.translate(this.x, sunEasingValue);
 
-    if (iterationCount > (totalIterations * 0.75) && audioAverage > 50) {
+    if (iterationCount > (totalIterations * 0.75) && audioAverage > 70) {
       scaleSun = audioAverage/255;
     } else {
       scaleSun *= 0.9;
@@ -311,13 +316,13 @@ Sun.prototype = {
     ctx.restore();
     //ctx.save();
     ctx.translate(0, 0);
-    ctx.fillStyle = '#000';  
+    ctx.fillStyle = '#OOO';  
 
     ctx.beginPath();
     ctx.shadowBlur=audioAverage * 0.05;
     ctx.shadowColor="#00";
-    for (var i = 0; i < 15; i++) {
-      ctx.fillRect(0, (this.y - this.r) + 40 + i * 20, W, (i + 1) * 2);
+    for (var i = 0; i < 10; i++) {
+      ctx.fillRect(0, (this.y - this.r/2) + i * sunBars*2, W, (i + 1) * 2);
     }
     ctx.closePath();
     ctx.fill();
